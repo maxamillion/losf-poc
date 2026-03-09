@@ -1,0 +1,110 @@
+name: "LOSF: Auto-Resolve Merge Conflicts"
+
+on:
+  schedule:
+    - cron: "0 */4 * * *"
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  resolve-conflicts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Goose CLI
+        run: curl -fsSL https://github.com/block/goose/releases/latest/download/download_cli.sh | CONFIGURE=false bash
+
+      - name: Configure Goose
+        run: |
+          mkdir -p ~/.config/goose
+          cat > ~/.config/goose/config.yaml << 'EOF'
+          provider: gemini
+          model: gemini-3.1-pro-preview
+          keyring: false
+          EOF
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Detect and resolve merge conflicts
+        run: |
+          set -euo pipefail
+
+          # Fetch latest state
+          git fetch origin
+
+          # Get list of open PRs
+          PR_LIST=$(gh pr list --state open --json number,headRefName --jq '.[] | "\(.number) \(.headRefName)"')
+
+          if [ -z "$PR_LIST" ]; then
+            echo "No open PRs found."
+            exit 0
+          fi
+
+          echo "$PR_LIST" | while read -r PR_NUMBER PR_BRANCH; do
+            echo "::group::Checking PR #${PR_NUMBER} (${PR_BRANCH})"
+
+            # Try a test merge to detect conflicts
+            git checkout main
+            git reset --hard origin/main
+
+            if git merge --no-commit --no-ff "origin/${PR_BRANCH}" 2>/dev/null; then
+              echo "PR #${PR_NUMBER}: No conflicts detected."
+              git merge --abort 2>/dev/null || true
+            else
+              echo "PR #${PR_NUMBER}: Conflicts detected. Attempting resolution..."
+              git merge --abort 2>/dev/null || true
+
+              # Checkout the PR branch and attempt merge from main
+              git checkout -B "conflict-fix/${PR_BRANCH}" "origin/${PR_BRANCH}"
+              git merge origin/main --no-commit || true
+
+              # Run Goose to resolve conflicts
+              if goose run --recipe .goose/recipes/merge-conflict.yaml; then
+                # Check if conflicts were resolved (no conflict markers remain)
+                if grep -rn '<<<<<<<\|=======\|>>>>>>>' . --include='*.py' --include='*.yml' --include='*.yaml' --include='*.md' --include='*.txt' --include='*.json' --include='*.toml' 2>/dev/null; then
+                  echo "PR #${PR_NUMBER}: Conflict markers still present. Manual intervention needed."
+                  gh pr comment "${PR_NUMBER}" --body "LOSF attempted to resolve merge conflicts automatically but was unable to fully resolve them. Manual intervention is needed.
+
+          Please resolve the conflicts and push the fixes."
+                else
+                  # Commit and push the resolution
+                  git config user.name "losf-bot[bot]"
+                  git config user.email "losf-bot[bot]@users.noreply.github.com"
+                  git add -A
+                  git commit -m "losf: auto-resolve merge conflicts with main"
+                  git push origin "HEAD:${PR_BRANCH}"
+
+                  gh pr comment "${PR_NUMBER}" --body "LOSF automatically resolved merge conflicts with the main branch. :wrench:
+
+          Please review the conflict resolution to ensure correctness."
+                fi
+              else
+                echo "PR #${PR_NUMBER}: Goose recipe failed. Manual intervention needed."
+                gh pr comment "${PR_NUMBER}" --body "LOSF attempted to resolve merge conflicts but encountered an error. Manual intervention is needed."
+              fi
+            fi
+
+            # Clean up
+            git checkout main
+            git reset --hard origin/main
+
+            echo "::endgroup::"
+          done

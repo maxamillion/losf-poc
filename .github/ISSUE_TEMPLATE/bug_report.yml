@@ -1,0 +1,54 @@
+name: Bug Report
+description: Report a bug in the project
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a bug! Please fill out the details below
+        so the LOSF pipeline can understand and fix the issue.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: >
+        Provide a clear and concise description of the bug.
+      placeholder: "Describe the bug..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps-to-reproduce
+    attributes:
+      label: Steps to Reproduce
+      description: >
+        List the steps to reproduce the behavior.
+      placeholder: |
+        1. Step one
+        2. Step two
+        3. Step three
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected Behavior
+      description: >
+        Describe what you expected to happen.
+      placeholder: "What should have happened..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: >
+        Any additional context, screenshots, logs, or environment details
+        that would help diagnose the issue.
+      placeholder: "Any extra information..."
+    validations:
+      required: false

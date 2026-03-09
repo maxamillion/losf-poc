@@ -1,0 +1,28 @@
+version: 1.0.0
+
+title: "LOSF Development Pipeline"
+description: >
+  Main orchestrator recipe for the Lights-Out Software Factory.
+  Runs the architect subrecipe to create a plan, then the dev-qe-loop
+  subrecipe to implement and review the changes.
+
+parameters:
+  issue_title:
+    type: string
+    description: "Title of the GitHub issue to implement"
+  issue_number:
+    type: string
+    description: "GitHub issue number"
+
+steps:
+  - title: "Architect Phase"
+    recipe: .goose/recipes/architect.yaml
+    values:
+      issue_title: "{{ issue_title }}"
+      issue_number: "{{ issue_number }}"
+
+  - title: "Development and QE Phase"
+    recipe: .goose/recipes/dev-qe-loop.yaml
+    values:
+      issue_title: "{{ issue_title }}"
+      issue_number: "{{ issue_number }}"
